@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Riley's Christmas Tree | Luxurious 3D Experience</title>
+    <style>
+        /* --- 核心修复区域 Start --- */
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; /* 禁止出现滚动条 */
+            background-color: #050510;
+        }
+
+        /* 关键修复：让 React 的挂载节点强制撑满屏幕 */
+        #root {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        /* --- 核心修复区域 End --- */
+
+        body { 
+            color: #A5F2F3; 
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .ui-layer {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            text-align: center;
+            pointer-events: none;
+            width: 100%;
+        }
+        
+        button {
+            pointer-events: auto;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(165, 242, 243, 0.3);
+            color: #fff;
+            padding: 12px 32px;
+            font-size: 0.9rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            border-radius: 30px;
+            transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+            font-weight: 300;
+        }
+        
+        button:hover {
+            background: rgba(165, 242, 243, 0.15);
+            border-color: #A5F2F3;
+            box-shadow: 0 0 20px rgba(165, 242, 243, 0.2);
+            transform: scale(1.05);
+        }
+
+        .loader {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.5);
+            font-size: 12px;
+            letter-spacing: 2px;
+        }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "react": "https://esm.sh/react@18.2.0",
+                "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+                "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+                "three": "https://esm.sh/three@0.160.0",
+                "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.15.14?external=react,react-dom,three",
+                "@react-three/drei": "https://esm.sh/@react-three/drei@9.96.1?external=react,react-dom,three,@react-three/fiber",
+                "@react-three/postprocessing": "https://esm.sh/@react-three/postprocessing@2.16.0?external=react,react-dom,three,@react-three/fiber",
+                "maath/random/dist/maath-random.esm": "https://esm.sh/maath@0.10.7/random/dist/maath-random.esm"
+            }
+        }
+    </script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <div id="root">
+        <div class="loader">INITIALIZING LUXURY EXPERIENCE...</div>
+    </div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useRef, useMemo, Suspense } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import * as THREE from 'three';
+        import { Canvas, useFrame } from '@react-three/fiber';
+        import { 
+            OrbitControls, 
+            Text, 
+            Float, 
+            Environment, 
+            PerspectiveCamera, 
+            Stars,
+            Sparkles
+        } from '@react-three/drei';
+        import { EffectComposer, Bloom, Noise, Vignette } from '@react-three/postprocessing';
+        import * as random from 'maath/random/dist/maath-random.esm';
+
+        // --- Config ---
+        const PALETTE = {
+            emerald: "#005533",
+            midnight: "#050510", 
+            ice: "#A5F2F3",       
+            purple: "#6A0DAD",    
+            snow: "#FFFFFF",
+            gold: "#FFD700"       
+        };
+        const COUNT = 1500; 
+
+        // --- Math Helpers ---
+        const getTreePos = (i, count) => {
+            const t = i / count;
+            const angle = t * Math.PI * 40; 
+            const radius = 5 * (1 - t); 
+            const x = Math.cos(angle) * radius;
+            const z = Math.sin(angle) * radius;
+            const y = (t * 10) - 5; 
+            return new THREE.Vector3(x, y, z);
+        };
+
+        const getScatterPos = () => {
+            const v = new THREE.Vector3();
+            const theta = THREE.MathUtils.randFloatSpread(360); 
+            const phi = THREE.MathUtils.randFloatSpread(360); 
+            const r = 15 + Math.random() * 10; 
+            v.setFromSphericalCoords(r, theta, phi);
+            return v;
+        };
+
+        // --- Components ---
+        const MagicTree = ({ mode }) => {
+            const meshRef = useRef();
+            const { dummy, color, targetPos, currentPos } = useMemo(() => {
+                const dummy = new THREE.Object3D();
+                const color = new THREE.Color();
+                const targetPos = { tree: new Float32Array(COUNT * 3), scatter: new Float32Array(COUNT * 3) };
+                const currentPos = new Float32Array(COUNT * 3);
+
+                for (let i = 0; i < COUNT; i++) {
+                    const treeV = getTreePos(i, COUNT);
+                    targetPos.tree[i*3] = treeV.x;
+                    targetPos.tree[i*3+1] = treeV.y;
+                    targetPos.tree[i*3+2] = treeV.z;
+
+                    const scatterV = getScatterPos();
+                    targetPos.scatter[i*3] = scatterV.x;
+                    targetPos.scatter[i*3+1] = scatterV.y;
+                    targetPos.scatter[i*3+2] = scatterV.z;
+
+                    currentPos[i*3] = scatterV.x;
+                    currentPos[i*3+1] = scatterV.y;
+                    currentPos[i*3+2] = scatterV.z;
+                }
+                return { dummy, color, targetPos, currentPos };
+            }, []);
+
+            useFrame((state, delta) => {
+                if (!meshRef.current) return;
+                const time = state.clock.getElapsedTime();
+                const lerpFactor = 2.0 * delta; 
+
+                for (let i = 0; i < COUNT; i++) {
+                    const ix = i * 3; const iy = i * 3 + 1; const iz = i * 3 + 2;
+                    const tx = mode === 'tree' ? targetPos.tree[ix] : targetPos.scatter[ix];
+                    const ty = mode === 'tree' ? targetPos.tree[iy] : targetPos.scatter[iy];
+                    const tz = mode === 'tree' ? targetPos.tree[iz] : targetPos.scatter[iz];
+
+                    currentPos[ix] += (tx - currentPos[ix]) * lerpFactor;
+                    currentPos[iy] += (ty - currentPos[iy]) * lerpFactor;
+                    currentPos[iz] += (tz - currentPos[iz]) * lerpFactor;
+
+                    const hover = Math.sin(time + i * 0.1) * 0.05;
+                    dummy.position.set(currentPos[ix], currentPos[iy] + hover, currentPos[iz]);
+                    
+                    const scale = mode === 'tree' ? 0.15 : 0.08;
+                    dummy.scale.set(scale, scale, scale);
+                    dummy.rotation.set(time * 0.2, time * 0.1, 0);
+                    dummy.updateMatrix();
+                    meshRef.current.setMatrixAt(i, dummy.matrix);
+
+                    if (i % 10 === 0) meshRef.current.setColorAt(i, color.set(PALETTE.ice));
+                    else if (i % 25 === 0) meshRef.current.setColorAt(i, color.set(PALETTE.purple));
+                    else if (i % 50 === 0) meshRef.current.setColorAt(i, color.set(PALETTE.gold));
+                    else meshRef.current.setColorAt(i, color.set(PALETTE.emerald).multiplyScalar(1.5));
+                }
+                meshRef.current.instanceMatrix.needsUpdate = true;
+                if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
+            });
+
+            return (
+                <instancedMesh ref={meshRef} args={[null, null, COUNT]}>
+                    <dodecahedronGeometry args={[1, 0]} />
+                    <meshStandardMaterial toneMapped={false} roughness={0.2} metalness={0.8} emissive={PALETTE.emerald} emissiveIntensity={0.2} />
+                </instancedMesh>
+            );
+        };
+
+        const FloatingText = ({ text, position, rotation, mode }) => {
+            const fontUrl = "https://cdn.jsdelivr.net/npm/@fontsource/great-vibes/files/great-vibes-latin-400-normal.woff";
+            
+            const mesh = useRef();
+            const [targetVec] = useState(() => new THREE.Vector3(...position));
+            const [scatterVec] = useState(() => getScatterPos());
+
+            useFrame((state, delta) => {
+                if(!mesh.current) return;
+                const activeTarget = mode === 'tree' ? targetVec : scatterVec;
+                mesh.current.position.lerp(activeTarget, delta * 1.5);
+                
+                if(mode === 'scatter') {
+                    mesh.current.rotation.x += delta * 0.1;
+                    mesh.current.rotation.y += delta * 0.1;
+                } else {
+                    mesh.current.rotation.x = THREE.MathUtils.lerp(mesh.current.rotation.x, rotation[0], delta);
+                    mesh.current.rotation.y = THREE.MathUtils.lerp(mesh.current.rotation.y, rotation[1], delta);
+                    mesh.current.rotation.z = THREE.MathUtils.lerp(mesh.current.rotation.z, rotation[2], delta);
+                }
+            });
+
+            return (
+                <Float speed={2} rotationIntensity={0.5} floatIntensity={1}>
+                    <group ref={mesh}>
+                        <Text
+                            font={fontUrl}
+                            fontSize={1.2}
+                            letterSpacing={0.05}
+                            anchorX="center"
+                            anchorY="middle"
+                        >
+                            {text}
+                            <meshPhysicalMaterial 
+                                color={PALETTE.snow}
+                                transmission={0.2} 
+                                metalness={0.9} 
+                                roughness={0.1}
+                                clearcoat={1}
+                                emissive={PALETTE.purple}
+                                emissiveIntensity={0.3}
+                            />
+                        </Text>
+                    </group>
+                </Float>
+            );
+        };
+
+        const Scene = ({ mode }) => {
+            return (
+                <>
+                    <PerspectiveCamera makeDefault position={[0, 2, 25]} fov={45} />
+                    <OrbitControls enablePan={false} autoRotate={mode === 'tree'} autoRotateSpeed={0.5} maxDistance={40} minDistance={5} />
+                    <Environment preset="city" />
+                    <ambientLight intensity={0.5} color={PALETTE.midnight} />
+                    <spotLight position={[10, 20, 10]} angle={0.3} penumbra={1} intensity={2} color={PALETTE.ice} />
+                    <pointLight position={[-10, -10, -10]} intensity={1} color={PALETTE.purple} />
+
+                    <MagicTree mode={mode} />
+
+                    <FloatingText mode={mode} text="Merry Christmas" position={[0, 6.5, 0]} rotation={[0, 0, 0]} />
+                    <FloatingText mode={mode} text="Love Riley Forever" position={[0, -6, 4]} rotation={[-0.2, 0, 0]} />
+                    <FloatingText mode={mode} text="I Miss You" position={[4, 0, 0]} rotation={[0, -Math.PI/4, 0]} />
+                    <FloatingText mode={mode} text="I Love You" position={[-4, 2, 2]} rotation={[0, Math.PI/4, 0]} />
+
+                    <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+                    <Sparkles count={200} scale={12} size={4} speed={0.4} opacity={0.5} color={PALETTE.ice} />
+
+                    <EffectComposer disableNormalPass>
+                        <Bloom luminanceThreshold={1} mipmapBlur intensity={1.5} radius={0.6} />
+                        <Vignette eskil={false} offset={0.1} darkness={0.6} />
+                        <Noise opacity={0.02} /> 
+                    </EffectComposer>
+                </>
+            );
+        };
+
+        const App = () => {
+            const [mode, setMode] = useState('tree'); 
+            const toggleMode = () => setMode(prev => prev === 'tree' ? 'scatter' : 'tree');
+
+            return (
+                <>
+                    <div className="ui-layer">
+                        <button onClick={toggleMode}>{mode === 'tree' ? 'Release Magic' : 'Gather Love'}</button>
+                    </div>
+                    {/* Canvas 现在会继承父级 #root 的 100% 高度 */}
+                    <Canvas dpr={[1, 2]} gl={{ antialias: false, toneMapping: THREE.ReinhardToneMapping, toneMappingExposure: 1.5 }}>
+                        <Suspense fallback={null}>
+                            <Scene mode={mode} />
+                        </Suspense>
+                    </Canvas>
+                </>
+            );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
