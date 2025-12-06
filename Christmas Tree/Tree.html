@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Riley's Christmas Tree | Luxurious 3D Experience</title>
+    <style>
+        /* --- CSS Reset & Full Screen --- */
+        html, body {
+            width: 100%; height: 100%; margin: 0; padding: 0;
+            overflow: hidden; background-color: #050510;
+        }
+        #root { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+        body { color: #A5F2F3; font-family: 'Inter', sans-serif; }
+        
+        /* --- UI --- */
+        .ui-layer {
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+            z-index: 10; text-align: center; pointer-events: none; width: 100%;
+        }
+        button {
+            pointer-events: auto; background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(165, 242, 243, 0.3); color: #fff;
+            padding: 12px 32px; font-size: 0.9rem; letter-spacing: 2px;
+            text-transform: uppercase; cursor: pointer; backdrop-filter: blur(10px);
+            border-radius: 30px; transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+            font-weight: 300;
+        }
+        button:hover {
+            background: rgba(165, 242, 243, 0.15); border-color: #A5F2F3;
+            box-shadow: 0 0 20px rgba(165, 242, 243, 0.2); transform: scale(1.05);
+        }
+        .loader {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.5); font-size: 12px; letter-spacing: 2px;
+        }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "react": "https://esm.sh/react@18.2.0",
+                "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+                "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+                "three": "https://esm.sh/three@0.160.0",
+                "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.15.14?external=react,react-dom,three",
+                "@react-three/drei": "https://esm.sh/@react-three/drei@9.96.1?external=react,react-dom,three,@react-three/fiber",
+                "@react-three/postprocessing": "https://esm.sh/@react-three/postprocessing@2.16.0?external=react,react-dom,three,@react-three/fiber",
+                "maath/random/dist/maath-random.esm": "https://esm.sh/maath@0.10.7/random/dist/maath-random.esm"
+            }
+        }
+    </script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <div id="root"><div class="loader">INITIALIZING...</div></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useRef, useMemo, Suspense } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import * as THREE from 'three';
+        import { Canvas, useFrame } from '@react-three/fiber';
+        import { OrbitControls, Text, Float, Environment, PerspectiveCamera, Stars, Sparkles } from '@react-three/drei';
+        import { EffectComposer, Bloom, Noise, Vignette } from '@react-three/postprocessing';
+
+        // --- Config ---
+        const PALETTE = { emerald: "#005533", midnight: "#050510", ice: "#A5F2F3", purple: "#6A0DAD", snow: "#FFFFFF", gold: "#FFD700" };
+        const PARTICLE_COUNT = 1500; 
+        // 核心修改：总共只有 12 条文字 (4条基础 + 8条额外)
+        const TOTAL_TEXTS = 12; 
+        const BASE_MESSAGES = ["Merry Christmas", "Love Riley Forever", "I Miss You", "I Love You"];
+
+        // --- Math Helpers ---
+        const getTreePos = (i, count) => {
+            const t = i / count;
+            const angle = t * Math.PI * 40; 
+            const radius = 5 * (1 - t); 
+            return new THREE.Vector3(Math.cos(angle) * radius, (t * 10) - 5, Math.sin(angle) * radius);
+        };
+
+        const getScatterPos = (radius = 25) => {
+            const v = new THREE.Vector3();
+            const theta = THREE.MathUtils.randFloatSpread(360); 
+            const phi = THREE.MathUtils.randFloatSpread(360); 
+            v.setFromSphericalCoords(radius + Math.random() * 10, theta, phi);
+            return v;
+        };
+
+        // --- Components ---
+
+        // 1. 五角星树顶 (修改为真实的星星形状)
+        const StarTop = ({ mode }) => {
+            const mesh = useRef();
+            const [startPos] = useState(() => new THREE.Vector3(0, 5.8, 0));
+            const [scatterPos] = useState(() => getScatterPos(30));
+
+            // 创建五角星几何体
+            const starGeometry = useMemo(() => {
+                const shape = new THREE.Shape();
+                const outerRadius = 0.8;
+                const innerRadius = 0.35;
+                const points = 5;
+                for (let i = 0; i < points * 2; i++) {
+                    const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                    // 调整角度偏移，让星星正对前方
+                    const angle = (i / (points * 2)) * Math.PI * 2 - Math.PI / 2; 
+                    const x = Math.cos(angle) * radius;
+                    const y = Math.sin(angle) * radius;
+                    if (i === 0) shape.moveTo(x, y);
+                    else shape.lineTo(x, y);
+                }
+                shape.closePath();
+                // 挤压成 3D
+                return new THREE.ExtrudeGeometry(shape, { depth: 0.2, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 3 });
+            }, []);
+
+            useFrame((state, delta) => {
+                if (!mesh.current) return;
+                mesh.current.rotation.y += delta * 0.8; // 自转
+                const target = mode === 'tree' ? startPos : scatterPos;
+                mesh.current.position.lerp(target, delta * 1.5);
+                const targetScale = mode === 'tree' ? 1 : 0.5;
+                mesh.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), delta * 2);
+            });
+
+            return (
+                <group ref={mesh}>
+                    <mesh geometry={starGeometry}>
+                        <meshStandardMaterial color={PALETTE.gold} emissive={PALETTE.gold} emissiveIntensity={2.5} roughness={0.1} metalness={1} />
+                    </mesh>
+                    <Sparkles count={30} scale={2.5} size={4} speed={2} color={PALETTE.gold} />
+                </group>
+            );
+        };
+
+        // 2. 圣诞树粒子主体 (保持不变)
+        const MagicTree = ({ mode }) => {
+            const meshRef = useRef();
+            const { dummy, color, targetPos, currentPos } = useMemo(() => {
+                const dummy = new THREE.Object3D();
+                const color = new THREE.Color();
+                const targetPos = { tree: new Float32Array(PARTICLE_COUNT * 3), scatter: new Float32Array(PARTICLE_COUNT * 3) };
+                const currentPos = new Float32Array(PARTICLE_COUNT * 3);
+                for (let i = 0; i < PARTICLE_COUNT; i++) {
+                    const treeV = getTreePos(i, PARTICLE_COUNT);
+                    targetPos.tree[i*3] = treeV.x; targetPos.tree[i*3+1] = treeV.y; targetPos.tree[i*3+2] = treeV.z;
+                    const scatterV = getScatterPos();
+                    targetPos.scatter[i*3] = scatterV.x; targetPos.scatter[i*3+1] = scatterV.y; targetPos.scatter[i*3+2] = scatterV.z;
+                    currentPos[i*3] = scatterV.x; currentPos[i*3+1] = scatterV.y; currentPos[i*3+2] = scatterV.z;
+                }
+                return { dummy, color, targetPos, currentPos };
+            }, []);
+
+            useFrame((state, delta) => {
+                if (!meshRef.current) return;
+                const time = state.clock.getElapsedTime();
+                const lerpFactor = 2.0 * delta; 
+                for (let i = 0; i < PARTICLE_COUNT; i++) {
+                    const ix = i * 3; const iy = i * 3 + 1; const iz = i * 3 + 2;
+                    const tx = mode === 'tree' ? targetPos.tree[ix] : targetPos.scatter[ix];
+                    const ty = mode === 'tree' ? targetPos.tree[iy] : targetPos.scatter[iy];
+                    const tz = mode === 'tree' ? targetPos.tree[iz] : targetPos.scatter[iz];
+                    currentPos[ix] += (tx - currentPos[ix]) * lerpFactor;
+                    currentPos[iy] += (ty - currentPos[iy]) * lerpFactor;
+                    currentPos[iz] += (tz - currentPos[iz]) * lerpFactor;
+                    const hover = Math.sin(time + i * 0.1) * 0.05;
+                    dummy.position.set(currentPos[ix], currentPos[iy] + hover, currentPos[iz]);
+                    const scale = mode === 'tree' ? 0.15 : 0.08;
+                    dummy.scale.set(scale, scale, scale);
+                    dummy.rotation.set(time * 0.2, time * 0.1, 0);
+                    dummy.updateMatrix();
+                    meshRef.current.setMatrixAt(i, dummy.matrix);
+                    if (i % 10 === 0) meshRef.current.setColorAt(i, color.set(PALETTE.ice));
+                    else if (i % 25 === 0) meshRef.current.setColorAt(i, color.set(PALETTE.purple));
+                    else if (i % 50 === 0) meshRef.current.setColorAt(i, color.set(PALETTE.gold));
+                    else meshRef.current.setColorAt(i, color.set(PALETTE.emerald).multiplyScalar(1.5));
+                }
+                meshRef.current.instanceMatrix.needsUpdate = true;
+                if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
+            });
+            return (
+                <instancedMesh ref={meshRef} args={[null, null, PARTICLE_COUNT]}>
+                    <dodecahedronGeometry args={[1, 0]} />
+                    <meshStandardMaterial toneMapped={false} roughness={0.2} metalness={0.8} emissive={PALETTE.emerald} emissiveIntensity={0.2} />
+                </instancedMesh>
+            );
+        };
+
+        // 3. 单个漂浮文字组件 (包含可见性逻辑)
+        const FloatingText = ({ text, treePos, scatterPos, mode, index }) => {
+            const fontUrl = "https://cdn.jsdelivr.net/npm/@fontsource/great-vibes/files/great-vibes-latin-400-normal.woff";
+            const mesh = useRef();
+            const isBaseText = index < 4; // 前4个是基础文字
+
+            useFrame((state, delta) => {
+                if(!mesh.current) return;
+                
+                // 1. 位置插值
+                const activeTarget = mode === 'tree' ? treePos : scatterPos;
+                mesh.current.position.lerp(activeTarget, delta * 1.5);
+
+                // 2. 核心修改：可见性缩放逻辑
+                let targetScale = 1;
+                if (mode === 'tree') {
+                    // 在树模式下，只有基础文字显示，其他的缩放为 0
+                    targetScale = isBaseText ? 1 : 0;
+                } else {
+                    // 散落模式下全部显示
+                    targetScale = 1;
+                }
+                mesh.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), delta * 3);
+
+                // 3. 始终面向相机 (只有在显示时才计算，优化性能)
+                if (targetScale > 0.01) {
+                    mesh.current.lookAt(state.camera.position);
+                }
+            });
+
+            return (
+                <Float speed={isBaseText ? 1.5 : 3} rotationIntensity={0.2} floatIntensity={isBaseText ? 0.5 : 1}>
+                    <group ref={mesh}>
+                        <Text font={fontUrl} fontSize={isBaseText ? 1.2 : 1} anchorX="center" anchorY="middle">
+                            {text}
+                            <meshStandardMaterial color={PALETTE.snow} emissive={isBaseText ? PALETTE.ice : PALETTE.purple} emissiveIntensity={isBaseText ? 0.8 : 0.5} toneMapped={false} />
+                        </Text>
+                    </group>
+                </Float>
+            );
+        };
+
+        // 4. 文字管理容器 (生成固定数量的文字)
+        const TextManager = ({ mode }) => {
+            const texts = useMemo(() => {
+                const items = [];
+                // 定义 4 个基础文字在树上的固定位置 (前后左右)
+                const basePositions = [
+                    new THREE.Vector3(0, 2.5, 6),   // Merry Christmas (前上)
+                    new THREE.Vector3(0, -3, 7),    // Love Riley (前下)
+                    new THREE.Vector3(-6, 0, 0),    // I Miss You (左)
+                    new THREE.Vector3(6, 1.5, 0)    // I Love You (右)
+                ];
+
+                for (let i = 0; i < TOTAL_TEXTS; i++) {
+                    // 循环使用 4 条基础消息
+                    const textContent = BASE_MESSAGES[i % 4];
+                    
+                    // 决定树模式下的位置
+                    let treePos;
+                    if (i < 4) {
+                        treePos = basePositions[i]; // 前4个使用固定位置
+                    } else {
+                        // 其余的暂时藏在树中心 (会被 scale=0 隐藏)
+                        treePos = new THREE.Vector3(0, 0, 0); 
+                    }
+
+                    items.push({
+                        id: i,
+                        text: textContent,
+                        treePos: treePos,
+                        scatterPos: getScatterPos(20) // 散落半径适中，不占满全屏
+                    });
+                }
+                return items;
+            }, []);
+
+            return (
+                <group>
+                    {texts.map((item, i) => (
+                        <FloatingText key={item.id} index={i} text={item.text} treePos={item.treePos} scatterPos={item.scatterPos} mode={mode} />
+                    ))}
+                </group>
+            );
+        }
+
+        // 5. 主场景
+        const Scene = ({ mode }) => {
+            return (
+                <>
+                    <PerspectiveCamera makeDefault position={[0, 2, 35]} fov={50} />
+                    <OrbitControls enablePan={false} autoRotate={mode === 'tree'} autoRotateSpeed={0.5} maxDistance={50} minDistance={10} />
+                    <Environment preset="city" />
+                    <ambientLight intensity={0.5} color={PALETTE.midnight} />
+                    <spotLight position={[10, 20, 10]} angle={0.3} penumbra={1} intensity={2} color={PALETTE.ice} />
+                    <pointLight position={[-10, -10, -10]} intensity={1} color={PALETTE.purple} />
+
+                    <StarTop mode={mode} />
+                    <MagicTree mode={mode} />
+                    <TextManager mode={mode} />
+
+                    <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+                    <Sparkles count={300} scale={15} size={3} speed={0.4} opacity={0.5} color={PALETTE.ice} />
+
+                    <EffectComposer disableNormalPass>
+                        <Bloom luminanceThreshold={0.85} mipmapBlur intensity={2.5} radius={0.6} />
+                        <Vignette eskil={false} offset={0.1} darkness={0.6} />
+                        <Noise opacity={0.02} /> 
+                    </EffectComposer>
+                </>
+            );
+        };
+
+        const App = () => {
+            const [mode, setMode] = useState('tree'); 
+            const toggleMode = () => setMode(prev => prev === 'tree' ? 'scatter' : 'tree');
+            return (
+                <>
+                    <div className="ui-layer">
+                        <button onClick={toggleMode}>{mode === 'tree' ? 'Release Magic' : 'Gather Love'}</button>
+                    </div>
+                    <Canvas dpr={[1, 2]} gl={{ antialias: false, toneMapping: THREE.ReinhardToneMapping, toneMappingExposure: 1.5 }}>
+                        <Suspense fallback={null}><Scene mode={mode} /></Suspense>
+                    </Canvas>
+                </>
+            );
+        };
+        createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
